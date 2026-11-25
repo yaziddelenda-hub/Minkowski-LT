@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lorentz transformation on a Minkowski diagram</title>
+<style>
+  :root { --ink:#1a1a1a; --grid:#e3e3e3; --cone:#d9a520; --sp:#d62728; --ctp:#1f77b4; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:8px; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         color:var(--ink); background:#fff; }
+  #wrap { max-width:680px; margin:0 auto; }
+  svg { width:100%; height:auto; display:block; border:1px solid #ccc; background:#fff; }
+  .controls { display:flex; flex-wrap:wrap; gap:12px 20px; align-items:center; margin:10px 0; }
+  .controls label { font-size:14px; }
+  .slider-row { display:flex; align-items:center; gap:10px; width:100%; }
+  .slider-row input[type=range] { flex:1; }
+  input[type=number] { width:90px; padding:4px 6px; font-size:14px; }
+  #beta-val { font-family:monospace; min-width:56px; text-align:right; }
+  #out { font-family: ui-monospace, Menlo, Consolas, monospace; font-size:13px; line-height:1.5;
+         border:1px solid #888; padding:8px 10px; white-space:pre; overflow-x:auto; background:#fafafa; }
+  .hint { font-size:12px; color:#666; margin-top:6px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <svg id="plot" viewBox="0 0 640 640" role="img"
+       aria-label="Minkowski diagram showing frames S and S-prime and an event"></svg>
+
+  <div class="controls">
+    <div class="slider-row">
+      <label for="beta">β = v/c</label>
+      <input id="beta" type="range" min="-0.99" max="0.99" step="0.005" value="0">
+      <span id="beta-val">0.000</span>
+    </div>
+    <label>x <input id="ex" type="number" min="-10" max="10" step="0.1" value="0"></label>
+    <label>ct <input id="ect" type="number" min="-10" max="10" step="0.1" value="0"></label>
+  </div>
+
+  <div id="out"></div>
+  <div class="hint">c = 1. Event coordinates are limited to −10 … 10. Read the S′ coordinates by following the
+  dashed lines parallel to the S′ axes.</div>
+</div>
+
+<script>
+// <physics>
+const LIM = 10;
+function gamma(b) { return 1 / Math.sqrt(1 - b * b); }
+function lorentz(x, ct, b) { const g = gamma(b); return [g * (x - b * ct), g * (ct - b * x)]; }
+// unit vectors of x' and ct' expressed in S coordinates (x, ct)
+function basis(b) { const g = gamma(b); return { e1: [g, g * b], e2: [g * b, g] }; }
+// </physics>
+
+(function () {
+  const svg = document.getElementById("plot");
+  const sl = document.getElementById("beta");
+  const betaVal = document.getElementById("beta-val");
+  const inX = document.getElementById("ex");
+  const inCt = document.getElementById("ect");
+  const out = document.getElementById("out");
+
+  const W = 640, M = 40, S = (W - 2 * M) / (2 * LIM), C = W / 2;
+  const X = x => C + x * S, Y = ct => C - ct * S;       // data -> pixels
+  const f = v => v.toFixed(2);
+
+  const state = { x: 0, ct: 0 };
+
+  function clamp(v) { return Math.min(LIM, Math.max(-LIM, v)); }
+  function parse(el, key) {
+    const v = parseFloat(String(el.value).replace(",", "."));
+    if (isFinite(v)) state[key] = clamp(v);
+  }
+
+  function line(x1, y1, x2, y2, attrs) {
+    return `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" ${attrs}/>`;
+  }
+  function text(x, y, s, attrs) { return `<text x="${f(x)}" y="${f(y)}" ${attrs}>${s}</text>`; }
+
+  function draw() {
+    const b = parseFloat(sl.value);
+    const { e1, e2 } = basis(b);
+    const x = state.x, ct = state.ct;
+    const [xp, ctp] = lorentz(x, ct, b);
+    const g = gamma(b);
+    const theta = Math.atan(b) * 180 / Math.PI;
+    let s = "";
+
+    s += `<defs><clipPath id="clip"><rect x="${M}" y="${M}" width="${W - 2 * M}" height="${W - 2 * M}"/></clipPath></defs>`;
+    s += `<rect x="${M}" y="${M}" width="${W - 2 * M}" height="${W - 2 * M}" fill="#fff" stroke="#999"/>`;
+
+    // grid and tick labels
+    for (let k = -LIM; k <= LIM; k += 2.5) {
+      s += line(X(k), M, X(k), W - M, 'stroke="#e3e3e3" stroke-width="1"');
+      s += line(M, Y(k), W - M, Y(k), 'stroke="#e3e3e3" stroke-width="1"');
+      s += text(X(k), W - M + 16, k, 'font-size="11" text-anchor="middle" fill="#555"');
+      s += text(M - 6, Y(k) + 4, k, 'font-size="11" text-anchor="end" fill="#555"');
+    }
+
+    s += '<g clip-path="url(#clip)">';
+    // light cone
+    s += line(X(-LIM), Y(-LIM), X(LIM), Y(LIM), 'stroke="#d9a520" stroke-width="2"');
+    s += line(X(-LIM), Y(LIM), X(LIM), Y(-LIM), 'stroke="#d9a520" stroke-width="2"');
+    // S axes
+    s += line(X(-LIM), Y(0), X(LIM), Y(0), 'stroke="#000" stroke-width="1.6"');
+    s += line(X(0), Y(-LIM), X(0), Y(LIM), 'stroke="#000" stroke-width="1.6"');
+    // S' axes (long lines, clipped to the plot square)
+    const L = 3 * LIM;
+    s += line(X(-L * e1[0]), Y(-L * e1[1]), X(L * e1[0]), Y(L * e1[1]), 'stroke="#d62728" stroke-width="2.4"');
+    s += line(X(-L * e2[0]), Y(-L * e2[1]), X(L * e2[0]), Y(L * e2[1]), 'stroke="#1f77b4" stroke-width="2.4"');
+    // unit ticks on the S' axes
+    for (let k = -LIM; k <= LIM; k++) {
+      if (k === 0) continue;
+      const a = [k * e1[0], k * e1[1]], c = [k * e2[0], k * e2[1]];
+      const t = 0.12;
+      s += line(X(a[0] - t * e2[0]), Y(a[1] - t * e2[1]), X(a[0] + t * e2[0]), Y(a[1] + t * e2[1]),
+                'stroke="#d62728" stroke-width="1.4"');
+      s += line(X(c[0] - t * e1[0]), Y(c[1] - t * e1[1]), X(c[0] + t * e1[0]), Y(c[1] + t * e1[1]),
+                'stroke="#1f77b4" stroke-width="1.4"');
+    }
+    // dashed read-off lines
+    s += line(X(x), Y(ct), X(x), Y(0), 'stroke="#000" stroke-width="1.2" stroke-dasharray="5 4"');
+    s += line(X(x), Y(ct), X(0), Y(ct), 'stroke="#000" stroke-width="1.2" stroke-dasharray="5 4"');
+    const fx = [xp * e1[0], xp * e1[1]];   // foot on x' axis
+    const fc = [ctp * e2[0], ctp * e2[1]]; // foot on ct' axis
+    s += line(X(x), Y(ct), X(fx[0]), Y(fx[1]), 'stroke="#d62728" stroke-width="1.4" stroke-dasharray="5 4"');
+    s += line(X(x), Y(ct), X(fc[0]), Y(fc[1]), 'stroke="#1f77b4" stroke-width="1.4" stroke-dasharray="5 4"');
+    // event
+    s += `<circle cx="${f(X(x))}" cy="${f(Y(ct))}" r="5.5" fill="#000"/>`;
+    s += '</g>';
+
+    // axis labels
+    s += text(W - M - 6, Y(0) - 6, "x", 'font-size="15" text-anchor="end"');
+    s += text(X(0) + 8, M + 14, "ct", 'font-size="15"');
+
+    const xpLabelY = Y(b * (LIM - 0.8)) + (b >= 0 ? -8 : 18);
+    s += text(W - M - 6, xpLabelY, "x′", 'font-size="15" text-anchor="end" fill="#d62728"');
+
+    const ctpLabelX = X(b * (LIM - 1.0)) + (b >= 0 ? 8 : -8);
+    const ctpAnchor = b >= 0 ? "start" : "end";
+    s += text(ctpLabelX, M + 28, "ct′", `font-size="15" text-anchor="${ctpAnchor}" fill="#1f77b4"`);
+
+    // legend
+    const lx = M + 8, ly = M + 8;
+    s += `<rect x="${lx}" y="${ly}" width="150" height="86" fill="#fff" fill-opacity="0.9" stroke="#bbb"/>`;
+    s += line(lx + 8, ly + 16, lx + 36, ly + 16, 'stroke="#d9a520" stroke-width="2"');
+    s += text(lx + 42, ly + 20, "light cone ct = ±x", 'font-size="11"');
+    s += line(lx + 8, ly + 34, lx + 36, ly + 34, 'stroke="#d62728" stroke-width="2.4"');
+    s += text(lx + 42, ly + 38, "x′ axis", 'font-size="11"');
+    s += line(lx + 8, ly + 52, lx + 36, ly + 52, 'stroke="#1f77b4" stroke-width="2.4"');
+    s += text(lx + 42, ly + 56, "ct′ axis", 'font-size="11"');
+    s += `<circle cx="${lx + 22}" cy="${ly + 70}" r="4.5" fill="#000"/>`;
+    s += text(lx + 42, ly + 74, "event", 'font-size="11"');
+
+    svg.innerHTML = s;
+
+    betaVal.textContent = b.toFixed(3);
+    const p = (v, w) => v.toFixed(4).padStart(w);
+    out.textContent =
+      `β = ${b.toFixed(3)}   γ = ${g.toFixed(4)}   θ = arctan β = ${theta.toFixed(2)}°\n` +
+      `Event in S :  x  = ${p(x, 9)}   ct  = ${p(ct, 9)}\n` +
+      `Event in S′:  x′ = ${p(xp, 9)}   ct′ = ${p(ctp, 9)}\n` +
+      `(x′ = γ(x − β ct),  ct′ = γ(ct − β x))\n` +
+      `s² = ct² − x² = ${p(ct * ct - x * x, 9)}  (invariant)`;
+  }
+
+  sl.addEventListener("input", draw);
+  inX.addEventListener("input", () => { parse(inX, "x"); draw(); });
+  inCt.addEventListener("input", () => { parse(inCt, "ct"); draw(); });
+  inX.addEventListener("change", () => { parse(inX, "x"); inX.value = state.x; draw(); });
+  inCt.addEventListener("change", () => { parse(inCt, "ct"); inCt.value = state.ct; draw(); });
+
+  draw();
+})();
+</script>
+</body>
+</html>
